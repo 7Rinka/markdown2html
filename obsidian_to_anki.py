@@ -93,7 +93,7 @@ def convert_markdown_to_html(markdown_text: str) -> str:
     html = re.sub(r'~~(.+?)~~', r'<s>\1</s>', html)
     
     # 高亮 ==text==
-    html = re.sub(r'==(.+?)==', r'<mark>\1</mark>', html)
+    #html = re.sub(r'==(.+?)==', r'<mark>\1</mark>', html)
     
     # 8. 处理引用块 > ...
     html = re.sub(r'^&gt; (.+)$', r'<blockquote>\1</blockquote>', html, flags=re.MULTILINE)
