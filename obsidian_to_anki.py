@@ -164,43 +164,44 @@ def convert_markdown_to_html(markdown_text: str) -> str:
 
 
 def main():
-    """主函数：交互模式，持续接收输入并转换"""
+    """主函数：交互模式，每次回车从剪贴板读取并转换"""
     print("请粘贴 Markdown 内容：")
     
     while True:
         try:
-            lines = []
-            first_line = True
+            # 等待用户按回车
+            input()
             
-            while True:
-                line = input()
-                
-                # 空行表示输入结束（当至少有一行内容时）
-                if line == '' and not first_line:
-                    break
-                
-                lines.append(line)
-                first_line = False
-            
-            if not lines:
+            # 直接从剪贴板读取内容（避免 PowerShell 粘贴多行丢失换行的问题）
+            try:
+                markdown_text = pyperclip.paste()
+            except Exception as e:
+                print(f"读取剪贴板失败：{e}")
+                print("请重试...")
                 continue
             
-            markdown_text = '\n'.join(lines)
+            if not markdown_text.strip():
+                print("剪贴板为空，请先复制内容。")
+                continue
             
             # 转换
             html_result = convert_markdown_to_html(markdown_text)
             
-            # 复制到剪贴板
-            pyperclip.copy(html_result)
+            # 复制回剪贴板
+            try:
+                pyperclip.copy(html_result)
+            except Exception as e:
+                print(f"写入剪贴板失败：{e}")
+                # 备用方案：输出到控制台
+                print("\n--- 转换结果 ---")
+                print(html_result)
+                print("----------------\n")
+                continue
             
-            # 输出结果
-            print(html_result)
-            print("\n请粘贴 Markdown 内容：")
-            
-        except EOFError:
-            break
         except KeyboardInterrupt:
             print()
+            break
+        except EOFError:
             break
 
 
