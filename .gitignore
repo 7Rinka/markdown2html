@@ -1,1 +1,4 @@
-(obsidian_to_anki.py is a source file, so nothing needs to be added to .gitignore)
+```
+__pycache__/
+*.pyc
+```
