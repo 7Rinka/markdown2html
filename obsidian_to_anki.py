@@ -166,6 +166,7 @@ def convert_markdown_to_html(markdown_text: str) -> str:
 def main():
     """主函数：交互模式，每次回车从剪贴板读取并转换"""
     print("请粘贴 Markdown 内容：")
+    print("按回车键转换剪贴板中的内容（Ctrl+C 退出）\n")
     
     while True:
         try:
@@ -177,11 +178,11 @@ def main():
                 markdown_text = pyperclip.paste()
             except Exception as e:
                 print(f"读取剪贴板失败：{e}")
-                print("请重试...")
+                print("请重试...\n")
                 continue
             
             if not markdown_text.strip():
-                print("剪贴板为空，请先复制内容。")
+                print("剪贴板为空，请先复制内容。\n")
                 continue
             
             # 转换
@@ -198,8 +199,13 @@ def main():
                 print("----------------\n")
                 continue
             
+            # 显示转换结果，让用户知道已完成
+            print("\n✓ 已转换并复制到剪贴板：")
+            print(html_result)
+            print("\n" + "-"*40 + "\n")
+            
         except KeyboardInterrupt:
-            print()
+            print("\n已退出。")
             break
         except EOFError:
             break
