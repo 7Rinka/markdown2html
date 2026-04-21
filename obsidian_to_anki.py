@@ -12,7 +12,7 @@ Obsidian Markdown to Anki HTML Converter
 """
 
 import re
-import sys
+import pyperclip
 
 
 def convert_markdown_to_html(markdown_text: str) -> str:
@@ -32,18 +32,18 @@ def convert_markdown_to_html(markdown_text: str) -> str:
     latex_blocks = []
     def save_latex_block(match):
         latex_blocks.append(match.group(1))
-        # 使用不会被粗体/斜体匹配的占位符（不含字母数字）
         return f"§LB{len(latex_blocks) - 1}§"
     
     html = re.sub(r'\$\$(.*?)\$\$', save_latex_block, html, flags=re.DOTALL)
     
-    # 处理行内公式 $...$
+    # 处理行内公式 $...$ （需要更精确的匹配，避免匹配到 $$）
     latex_inline = []
     def save_latex_inline(match):
         latex_inline.append(match.group(1))
         return f"§LI{len(latex_inline) - 1}§"
     
-    html = re.sub(r'\$(?!\$)(.+?)(?<!\$)\$', save_latex_inline, html)
+    # 使用非贪婪匹配，确保不跨越多行，且正确处理转义字符
+    html = re.sub(r'\$(?!\$)([^\n]+?)(?<!\$)\$', save_latex_inline, html)
     
     # 2. 处理代码块 ```...```
     code_blocks = []
@@ -164,65 +164,44 @@ def convert_markdown_to_html(markdown_text: str) -> str:
 
 
 def main():
-    """主函数：从命令行或标准输入读取 Markdown，输出 HTML"""
-    import os
-    
-    # 检查是否有管道输入或文件重定向
-    if not os.isatty(0):
-        # 从管道或重定向读取
-        markdown_text = sys.stdin.read()
-        if not markdown_text.strip():
-            print("未输入任何内容，退出。")
-            return
-        html_result = convert_markdown_to_html(markdown_text)
-        print(html_result)
-        return
-    
-    # 交互模式
-    print("=" * 60)
-    print("Obsidian Markdown 转 Anki HTML 转换器")
-    print("=" * 60)
-    print("\n使用说明:")
-    print("1. 从 Obsidian 复制 Markdown 文本")
-    print("2. 粘贴到下方（输入单独一行 '---' 结束）")
-    print("3. 复制输出的 HTML 到 Anki")
-    print("\n支持：LaTeX 公式 ($...$ 和 $$...$$)、代码块、列表、链接等")
-    print("-" * 60)
-    
-    # 从标准输入读取多行文本
-    print("\n请粘贴 Markdown 内容（输入单独一行 '---' 结束）:\n")
-    
-    lines = []
+    """主函数：交互模式，持续接收输入并转换"""
+    print("请粘贴 Markdown 内容：")
     
     while True:
         try:
-            line = input()
+            lines = []
+            first_line = True
             
-            # 检查结束条件
-            if line.strip() == '---':
-                break
+            while True:
+                line = input()
+                
+                # 空行表示输入结束（当至少有一行内容时）
+                if line == '' and not first_line:
+                    break
+                
+                lines.append(line)
+                first_line = False
             
-            lines.append(line)
+            if not lines:
+                continue
+            
+            markdown_text = '\n'.join(lines)
+            
+            # 转换
+            html_result = convert_markdown_to_html(markdown_text)
+            
+            # 复制到剪贴板
+            pyperclip.copy(html_result)
+            
+            # 输出结果
+            print(html_result)
+            print("\n请粘贴 Markdown 内容：")
+            
         except EOFError:
             break
-    
-    if not lines:
-        print("\n未输入任何内容，退出。")
-        return
-    
-    markdown_text = '\n'.join(lines)
-    
-    # 转换
-    html_result = convert_markdown_to_html(markdown_text)
-    
-    # 输出结果
-    print("\n" + "=" * 60)
-    print("转换完成的 HTML（可直接复制到 Anki）:")
-    print("=" * 60)
-    print(html_result)
-    print("=" * 60)
-    print("\n提示：在 Anki 卡片模板中确保启用了 MathJax 以支持 LaTeX 公式")
-    print("如需保存为文件，可使用：python obsidian_to_anki.py < input.md > output.html")
+        except KeyboardInterrupt:
+            print()
+            break
 
 
 if __name__ == "__main__":
