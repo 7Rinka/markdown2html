@@ -92,16 +92,19 @@ def convert_markdown_to_html(markdown_text: str) -> str:
     # 删除线 ~~text~~
     html = re.sub(r'~~(.+?)~~', r'<s>\1</s>', html)
     
+    # 高亮 ==text==
+    html = re.sub(r'==(.+?)==', r'<mark>\1</mark>', html)
+    
     # 8. 处理引用块 > ...
     html = re.sub(r'^&gt; (.+)$', r'<blockquote>\1</blockquote>', html, flags=re.MULTILINE)
     # 合并连续的 blockquote
     html = re.sub(r'</blockquote>\n<blockquote>', r'\n', html)
     
     # 9. 处理列表
-    # 无序列表
-    html = re.sub(r'^[-*+] (.+)$', r'<li>\1</li>', html, flags=re.MULTILINE)
-    # 有序列表
-    html = re.sub(r'^\d+\. (.+)$', r'<li>\1</li>', html, flags=re.MULTILINE)
+    # 无序列表 - 添加临时标记 ol-marker 用于后续识别（支持前导空白）
+    html = re.sub(r'^\s*[-*+] (.+)$', r'<li ol-marker="ul">\1</li>', html, flags=re.MULTILINE)
+    # 有序列表 - 添加临时标记 ol-marker 用于后续识别（支持前导空白）
+    html = re.sub(r'^\s*\d+\. (.+)$', r'<li ol-marker="ol">\1</li>', html, flags=re.MULTILINE)
     
     # 10. 处理段落（空行分隔的文本）
     lines = html.split('\n')
@@ -153,9 +156,53 @@ def convert_markdown_to_html(markdown_text: str) -> str:
     for i, latex in enumerate(latex_inline):
         html = html.replace(f'§LI{i}§', f'\\({latex}\\)')
     
-    # 14. 包裹列表项到 <ul> 或 <ol>
-    # 检测连续的 <li> 并包裹
-    html = re.sub(r'((?:<li>.*?</li>\n?)+)', lambda m: '<ul>\n' + m.group(1) + '</ul>' if not re.search(r'^\d', m.group(1)) else '<ol>\n' + m.group(1) + '</ol>', html)
+    # 14. 包裹列表项到 <ul> 或 <ol>，并移除临时标记
+    # 需要将连续的同类型列表项分组，分别包裹
+    def wrap_lists(text):
+        lines = text.split('\n')
+        result_lines = []
+        current_list = []
+        current_type = None  # 'ul' or 'ol'
+        
+        for line in lines:
+            match = re.match(r'^<li ol-marker="(ul|ol)">(.*)</li>$', line.strip())
+            if match:
+                list_type = match.group(1)
+                content = match.group(2)
+                if current_type == list_type:
+                    # 同类型列表，继续累积
+                    current_list.append(f'<li>{content}</li>')
+                else:
+                    # 不同类型或新列表，先输出之前的列表
+                    if current_list:
+                        tag = '<ol>' if current_type == 'ol' else '<ul>'
+                        result_lines.append(tag)
+                        result_lines.extend(current_list)
+                        result_lines.append('</' + ('ol' if current_type == 'ol' else 'ul') + '>')
+                    # 开始新列表
+                    current_list = [f'<li>{content}</li>']
+                    current_type = list_type
+            else:
+                # 非列表行，输出当前列表（如果有）
+                if current_list:
+                    tag = '<ol>' if current_type == 'ol' else '<ul>'
+                    result_lines.append(tag)
+                    result_lines.extend(current_list)
+                    result_lines.append('</' + ('ol' if current_type == 'ol' else 'ul') + '>')
+                    current_list = []
+                    current_type = None
+                result_lines.append(line)
+        
+        # 处理末尾的列表
+        if current_list:
+            tag = '<ol>' if current_type == 'ol' else '<ul>'
+            result_lines.append(tag)
+            result_lines.extend(current_list)
+            result_lines.append('</' + ('ol' if current_type == 'ol' else 'ul') + '>')
+        
+        return '\n'.join(result_lines)
+    
+    html = wrap_lists(html)
     
     # 15. 清理多余的空行
     html = re.sub(r'\n{3,}', '\n\n', html)
