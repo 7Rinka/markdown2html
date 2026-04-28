@@ -151,56 +151,118 @@ def convert_markdown_to_html(markdown_text: str) -> str:
     # 13. 恢复 LaTeX 公式
     # Anki 使用 MathJax，需要特定的格式
     for i, latex in enumerate(latex_blocks):
-        html = html.replace(f'§LB{i}§', f'\\[{latex}\\]')
+        html = html.replace(f'§LB{i}§', f'<anki-mathjax>{latex}</anki-mathjax>')
 
     for i, latex in enumerate(latex_inline):
-        html = html.replace(f'§LI{i}§', f'\\({latex}\\)')
+        html = html.replace(f'§LI{i}§', f'<anki-mathjax>{latex}</anki-mathjax>')
 
     # 14. 包裹列表项到 <ul> 或 <ol>，并移除临时标记
     # 需要将连续的同类型列表项分组，分别包裹
+    # 支持嵌套列表：有序列表项后可以跟随无序列表项作为子列表
     def wrap_lists(text):
         lines = text.split('\n')
         result_lines = []
-        current_list = []
-        current_type = None  # 'ul' or 'ol'
-
-        for line in lines:
+        i = 0
+        
+        while i < len(lines):
+            line = lines[i]
             match = re.match(r'^<li ol-marker="(ul|ol)">(.*)</li>$', line.strip())
+            
             if match:
                 list_type = match.group(1)
                 content = match.group(2)
-                if current_type == list_type:
-                    # 同类型列表，继续累积
-                    current_list.append(f'<li>{content}</li>')
-                else:
-                    # 不同类型或新列表，先输出之前的列表
-                    if current_list:
-                        tag = '<ol>' if current_type == 'ol' else '<ul>'
-                        result_lines.append(tag)
-                        result_lines.extend(current_list)
-                        result_lines.append('</' + ('ol' if current_type == 'ol' else 'ul') + '>')
-                    # 开始新列表
-                    current_list = [f'<li>{content}</li>']
-                    current_type = list_type
+                
+                if list_type == 'ol':
+                    # 开始一个有序列表项
+                    # 检查后续是否有 ul 项目作为子列表
+                    sublist_items = []
+                    j = i + 1
+                    while j < len(lines):
+                        sub_match = re.match(r'^<li ol-marker="ul">(.*)</li>$', lines[j].strip())
+                        if sub_match:
+                            sublist_items.append(sub_match.group(1))
+                            j += 1
+                        else:
+                            break
+                    
+                    # 输出 ol 项，如果有子列表则嵌套
+                    if sublist_items:
+                        result_lines.append(f'<li>{content}</li>')
+                        result_lines.append('<ul>')
+                        for sub_item in sublist_items:
+                            result_lines.append(f'<li>{sub_item}</li>')
+                        result_lines.append('</ul>')
+                        i = j  # 跳过已处理的子列表项
+                        continue
+                    else:
+                        result_lines.append(f'<li>{content}</li>')
+                else:  # ul
+                    # 独立的无序列表（不在 ol 之后）
+                    ul_items = [content]
+                    j = i + 1
+                    while j < len(lines):
+                        ul_match = re.match(r'^<li ol-marker="ul">(.*)</li>$', lines[j].strip())
+                        if ul_match:
+                            ul_items.append(ul_match.group(1))
+                            j += 1
+                        else:
+                            break
+                    
+                    result_lines.append('<ul>')
+                    for item in ul_items:
+                        result_lines.append(f'<li>{item}</li>')
+                    result_lines.append('</ul>')
+                    i = j
+                    continue
             else:
-                # 非列表行，输出当前列表（如果有）
-                if current_list:
-                    tag = '<ol>' if current_type == 'ol' else '<ul>'
-                    result_lines.append(tag)
-                    result_lines.extend(current_list)
-                    result_lines.append('</' + ('ol' if current_type == 'ol' else 'ul') + '>')
-                    current_list = []
-                    current_type = None
                 result_lines.append(line)
-
-        # 处理末尾的列表
-        if current_list:
-            tag = '<ol>' if current_type == 'ol' else '<ul>'
-            result_lines.append(tag)
-            result_lines.extend(current_list)
-            result_lines.append('</' + ('ol' if current_type == 'ol' else 'ul') + '>')
-
-        return '\n'.join(result_lines)
+            
+            i += 1
+        
+        # 现在需要将连续的 ol 项包裹到 <ol> 标签中
+        final_lines = []
+        k = 0
+        while k < len(result_lines):
+            line = result_lines[k]
+            if line.strip().startswith('<li>') and not line.strip().startswith('<li>§'):
+                # 收集连续的 ol 项（可能后面跟着 <ul>...</ul>）
+                ol_items = []
+                has_sublist = False
+                while k < len(result_lines):
+                    curr = result_lines[k]
+                    curr_stripped = curr.strip()
+                    
+                    if curr_stripped.startswith('<li>') and not curr_stripped.startswith('<li>§'):
+                        ol_items.append(curr)
+                        k += 1
+                        # 检查下一个是否是 <ul>
+                        if k < len(result_lines) and result_lines[k].strip() == '<ul>':
+                            has_sublist = True
+                            # 收集整个 <ul>...</ul> 块
+                            ul_block = []
+                            while k < len(result_lines):
+                                ul_line = result_lines[k]
+                                ul_block.append(ul_line)
+                                k += 1
+                                if ul_line.strip() == '</ul>':
+                                    break
+                            ol_items.extend(ul_block)
+                    elif curr_stripped == '<ul>' or curr_stripped.startswith('<li>§'):
+                        # 这是子列表的一部分，应该已经在前面的循环中处理了
+                        k += 1
+                    else:
+                        break
+                
+                if ol_items:
+                    final_lines.append('<ol>')
+                    final_lines.extend(ol_items)
+                    final_lines.append('</ol>')
+                continue
+            else:
+                final_lines.append(line)
+            k += 1
+        
+        return '\n'.join(final_lines)
 
     html = wrap_lists(html)
 
